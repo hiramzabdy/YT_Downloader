@@ -2,6 +2,7 @@ from pytube import YouTube as yt
 from pytube.cli import on_progress
 from moviepy.editor import *
 import os
+import shutil
 
 def download(video, vid_index, waitlist_id=0):
     waitlist_id = str(waitlist_id)
@@ -87,16 +88,18 @@ def combine(video,audio,output_name):
         print("Video descargado y convertido exitosamente!")
     except:
         print("Hubo un error durante la conversión")
-    os.system("rm -rf /media")
+    #Esta parte remueve el directorio de trabajo, lo cual no afecta su funcionamiento ahora, pero lo hará cuando agrege la función de descargar varios videos en una ejecución
+    shutil.rmtree("./media/", ignore_errors=False, onerror=None)
 
 def run():
     url = input("Pega el enlace al video: ")
     video, video_streams = get_info(url)
     choice = decide_res(video, video_streams)
     all_good = download(video, choice)
-    title = "/downloads/" + video.title + ".mp4"
+    title = "./downloads/" + video.title + ".mp4"
     if all_good:
         ##Arreglar: No funciona para convertir videos con / en el título
+        print(title)
         combine("./media/videos/0.mp4", "./media/audios/0.mp4", title)
     else:
         "Intenta de nuevo"
