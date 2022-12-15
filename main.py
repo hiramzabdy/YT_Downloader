@@ -49,7 +49,19 @@ def download_progressive(chosen_stream):
         print("Video descargado exitosamente!")
     except:
         print("Ocurrió un error durante la descarga")
-    
+
+def download_audio(chosen_stream):
+    aud_size = str(int((chosen_stream.filesize/1024/1024)))
+    aud_name = chosen_stream.title
+    try: 
+        os.system("clear")
+        print("Descargando audio... " + aud_name)
+        print("Tamaño: " + aud_size + " MB\n")
+        chosen_stream.download(output_path="./downloads/audios", filename = aud_name + ".m4a")
+        print("Audio descargado exitosamente!")
+    except:
+        print("Ocurrió un error durante la descarga")
+
 def get_info(link):
     video = yt(link, on_progress_callback=on_progress)
     return video
@@ -60,8 +72,8 @@ def decide_res(video, qualities, itags):
     
     for quality in qualities:
         tag = itags[quality]
-        vid_stream = video.streams.get_by_itag(tag)
-        downloadable_streams.append(vid_stream)
+        stream = video.streams.get_by_itag(tag)
+        downloadable_streams.append(stream)
         
     def print_res(downloadable_streams):
         i = 1
@@ -69,10 +81,11 @@ def decide_res(video, qualities, itags):
             size = str(int((stream.filesize/1024/1024))) + " MB"
             if stream.is_progressive:
                 print("#" + str(i) + ". Res: " + stream.resolution + ", Tamaño: " + size + " (No requiere conversión)")
-            else:
+            elif stream.type != "audio":
                 print("#" + str(i) + ". Res: " + stream.resolution + ", Tamaño: " + size)
+            elif stream.type == "audio":
+                print("#" + str(i) + ". Res: Audio" + ", Tamaño: " + size + " (Descarga sólo el audio)")
             i = i +1
-        return
     
     choice = 0
     
@@ -112,6 +125,10 @@ def filter_res(video):
         resolution = int(resolution)
         itags[stream.resolution] = stream.itag
         qualities.append(stream.resolution)
+    audio_stream = video.streams.filter(adaptive=True, only_audio=True).order_by('abr').desc().first()
+    itags["Audio"] = audio_stream.itag
+    qualities.append("Audio")
+    
     return qualities, itags
             
 def combine(video,audio,output_name):
@@ -147,6 +164,8 @@ def run():
     all_good = False
     if chosen_stream.is_progressive:
         download_progressive(chosen_stream)
+    elif chosen_stream.type == "audio":    
+        download_audio(chosen_stream)
     else:
         all_good = download_non_progressive(chosen_stream, video)
         title = normalize(video.title)
