@@ -4,18 +4,18 @@ from moviepy.editor import *
 import os
 import shutil
 
-def download(video, vid_index, waitlist_id=0):
+def download_non_progressive(chosen_stream,video,waitlist_id=0):
     waitlist_id = str(waitlist_id)
-    video_stream = video.streams.filter(adaptive=True, file_extension='mp4').order_by('resolution').desc()[vid_index]
     audio_stream = video.streams.filter(adaptive=True, file_extension="mp4", only_audio=True).order_by('abr').desc().first()
-    vid_size = str(int((video_stream.filesize/1024/1024)))
-    vid_name = video.title
+    
+    vid_size = str(int((chosen_stream.filesize/1024/1024)))
+    vid_name = chosen_stream.title
     all_good = [False, False]
     os.system("clear")
     try:
         print("Descargando video... " + vid_name)
         print("Tamaño: " + vid_size + " MB\n")
-        video_stream.download(output_path="./media/videos/", filename=waitlist_id + ".mp4")
+        chosen_stream.download(output_path="./media/videos/", filename=waitlist_id + ".mp4")
         all_good[0] = True
     except:
         print("Error al descargar el video")
@@ -38,43 +38,81 @@ def download(video, vid_index, waitlist_id=0):
         all_good = False
     return all_good
     
+def download_progressive(chosen_stream):
+    vid_size = str(int((chosen_stream.filesize/1024/1024)))
+    vid_name = chosen_stream.title
+    try: 
+        os.system("clear")
+        print("Descargando video... " + vid_name)
+        print("Tamaño: " + vid_size + " MB\n")
+        chosen_stream.download(output_path="./downloads")
+        print("Video descargado exitosamente!")
+    except:
+        print("Ocurrió un error durante la descarga")
+    
 def get_info(link):
     video = yt(link, on_progress_callback=on_progress)
-    video_streams = video.streams.filter(adaptive=True, file_extension="mp4").order_by("resolution").desc()
-    return video, video_streams
+    return video
 
-def decide_res(video, available_streams):
+def decide_res(video, qualities, itags):
     os.system("clear")
-    print(video.title)
-    print("Resoluciones Disponibles: ")
-    counter = 1
-    for stream in available_streams:
-        size = str(int((stream.filesize/1024/1024))) + " MB"
-        print("#" + str(counter) + ". Res: " + stream.resolution + ", Tamaño: " + size)
-        counter = counter + 1
+    downloadable_streams = []
+    
+    for quality in qualities:
+        tag = itags[quality]
+        vid_stream = video.streams.get_by_itag(tag)
+        downloadable_streams.append(vid_stream)
+        
+    def print_res(downloadable_streams):
+        i = 1
+        for stream in downloadable_streams:
+            size = str(int((stream.filesize/1024/1024))) + " MB"
+            if stream.is_progressive:
+                print("#" + str(i) + ". Res: " + stream.resolution + ", Tamaño: " + size + " (No requiere conversión)")
+            else:
+                print("#" + str(i) + ". Res: " + stream.resolution + ", Tamaño: " + size)
+            i = i +1
+        return
+    
     choice = 0
     
-    while choice < 1 or choice >= counter:
+    while choice < 1 or choice > len(downloadable_streams):
         try:
-            choice = int(input("¿Qué resolución? (Número de la lista): "))
+            os.system("clear")
+            print(video.title)
+            print("\nResoluciones Disponibles:\n")
+            print_res(downloadable_streams)
+            choice = int(input("\n¿Qué resolución? (Número de la lista): "))
         except:
             print("Sólo puedes ingresar números")
     choice = choice -1
-    return choice
+    chosen_stream = downloadable_streams[choice]
+    return chosen_stream
 
-def filter_res():
+def filter_res(video):
+    video_streams_av01 = video.streams.filter(adaptive=True, file_extension="mp4").order_by("resolution").desc()
     qualities = []
     itags = {}
     exists = False
-    for stream in video_streams:
-        for quality in qualities:
-            if stream.resolution == quality:
-                exists = True
-        if exists == False:
-            itags[stream.itag] = stream.resolution
-            qualities.append(stream.resolution)
-        else:
-            exists = False
+    for stream in video_streams_av01:
+        resolution = stream.resolution.replace("p","")
+        resolution = int(resolution)
+        if resolution >= 1080:
+            for quality in qualities:
+                if stream.resolution == quality:
+                    exists = True
+            if exists == False:
+                itags[stream.resolution] = stream.itag
+                qualities.append(stream.resolution)
+            else:
+                exists = False
+    video_streams_progressive = video.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc()
+    for stream in video_streams_progressive:
+        resolution = stream.resolution.replace("p","")
+        resolution = int(resolution)
+        itags[stream.resolution] = stream.itag
+        qualities.append(stream.resolution)
+    return qualities, itags
             
 def combine(video,audio,output_name):
     os.system("clear")
@@ -91,18 +129,32 @@ def combine(video,audio,output_name):
     #Esta parte remueve el directorio de trabajo, lo cual no afecta su funcionamiento ahora, pero lo hará cuando agrege la función de descargar varios videos en una ejecución
     shutil.rmtree("./media/", ignore_errors=False, onerror=None)
 
+def normalize(title):
+    new_title = ""
+    for letter in title:
+        if letter != "/":
+            new_title = new_title + letter
+        else:
+            new_title = new_title + "-"
+    return new_title
+
 def run():
+    os.system("clear")
     url = input("Pega el enlace al video: ")
-    video, video_streams = get_info(url)
-    choice = decide_res(video, video_streams)
-    all_good = download(video, choice)
-    title = "./downloads/" + video.title + ".mp4"
-    if all_good:
-        ##Arreglar: No funciona para convertir videos con / en el título
-        print(title)
-        combine("./media/videos/0.mp4", "./media/audios/0.mp4", title)
+    video = get_info(url)
+    qualities, itags = filter_res(video)
+    chosen_stream = decide_res(video, qualities, itags)
+    all_good = False
+    if chosen_stream.is_progressive:
+        download_progressive(chosen_stream)
     else:
-        "Intenta de nuevo"
+        all_good = download_non_progressive(chosen_stream, video)
+        title = normalize(video.title)
+        title = "./downloads/" + title + ".mp4"
+        if all_good:
+            combine("./media/videos/0.mp4", "./media/audios/0.mp4", title)
+        else:
+            "\nIntenta de nuevo"
     
 
 if __name__ == "__main__":
