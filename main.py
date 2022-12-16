@@ -102,6 +102,16 @@ def decide_res(video, qualities, itags):
     chosen_stream = downloadable_streams[choice]
     return chosen_stream
 
+def get_highest_res(video, qualities, itags):
+    os.system("clear")
+    downloadable_streams = []
+    for quality in qualities:
+        tag = itags[quality]
+        stream = video.streams.get_by_itag(tag)
+        downloadable_streams.append(stream)
+    chosen_stream = downloadable_streams[0]
+    return chosen_stream
+
 def filter_res(video):
     video_streams_av01 = video.streams.filter(adaptive=True, file_extension="mp4").order_by("resolution").desc()
     qualities = []
@@ -155,7 +165,27 @@ def normalize(title):
             new_title = new_title + "-"
     return new_title
 
-def run():
+def get_urls_from_file(filename="links.txt"):
+    try:
+        links = []
+        with open(filename) as file:
+            links = file.readlines()
+        return links
+    except Exception as ex:
+        print("Hubo un problema al extraer los links del archivo <links.txtx>")
+        print(ex)
+
+def decide_mode():
+    mode = 0
+    while mode < 1 or mode > 2:
+        try:
+            os.system("clear")
+            mode = int(input("¿Qué modo de descarga?\n\n#1: Normal (Pegas el enlace al video y seleccionas la calidad)\n#2: Links (Toma los enlaces del archivo <links.txt>) \n\n Respuesta: "))
+        except:
+            print("Reintento")
+    return mode
+
+def run_one_link():
     os.system("clear")
     url = input("Pega el enlace al video: ")
     video = get_info(url)
@@ -174,6 +204,38 @@ def run():
             combine("./media/videos/0.mp4", "./media/audios/0.mp4", title)
         else:
             "\nIntenta de nuevo"
+
+def run_on_links():
+    links = get_urls_from_file()
+    for link in links:
+        print("Se descargarán los videos en la mejor calidad disponible")
+        os.system("clear")
+        url = link
+        video = get_info(url)
+        qualities, itags = filter_res(video)
+        chosen_stream = get_highest_res(video, qualities, itags)
+        all_good = False
+        if chosen_stream.is_progressive:
+            download_progressive(chosen_stream)
+        elif chosen_stream.type == "audio":    
+            download_audio(chosen_stream)
+        else:
+            all_good = download_non_progressive(chosen_stream, video)
+            title = normalize(video.title)
+            title = "./downloads/" + title + ".mp4"
+            if all_good:
+                combine("./media/videos/0.mp4", "./media/audios/0.mp4", title)
+            else:
+                "\nIntenta de nuevo"
+
+def run():
+    mode = decide_mode()
+    
+    if mode == 1:
+        run_one_link()
+    elif mode == 2:
+        run_on_links()
+    
     
 
 if __name__ == "__main__":
