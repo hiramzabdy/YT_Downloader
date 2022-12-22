@@ -177,10 +177,10 @@ def get_urls_from_file(filename="links.txt"):
 
 def decide_mode():
     mode = 0
-    while mode < 1 or mode > 2:
+    while mode < 1 or mode > 3:
         try:
             os.system("clear")
-            mode = int(input("¿Qué modo de descarga?\n\n#1: Normal (Pegas el enlace al video y seleccionas la calidad)\n#2: Links (Toma los enlaces del archivo <links.txt>) \n\n Respuesta: "))
+            mode = int(input("¿Qué modo de descarga?\n\n#1: Normal (Pegas el enlace al video y seleccionas la calidad)\n#2: Links (Toma los enlaces del archivo <links.txt>)\n#3: Links audio (Toma los enlaces del archivo <links.txt>) \n\n Respuesta: "))
         except:
             print("Reintento")
     return mode
@@ -228,6 +228,15 @@ def run_on_links():
             else:
                 "\nIntenta de nuevo"
 
+def run_on_links_audio():
+    links = get_urls_from_file()
+    for link in links:
+        os.system("clear")
+        url = link
+        video = get_info(url)
+        chosen_stream = video.streams.filter(adaptive=True, file_extension="mp4", only_audio=True).order_by('abr').desc().first()
+        download_audio(chosen_stream)
+
 def run():
     mode = decide_mode()
     
@@ -235,6 +244,8 @@ def run():
         run_one_link()
     elif mode == 2:
         run_on_links()
+    elif mode == 3:
+        run_on_links_audio()
     
     
 
