@@ -5,6 +5,7 @@ import os
 import shutil
 
 def download_non_progressive(chosen_stream,video,waitlist_id=0):
+    #Waitlist has no uses for now. It will when enabling simoultaneous downloads feature.
     waitlist_id = str(waitlist_id)
     audio_stream = video.streams.filter(adaptive=True, file_extension="mp4", only_audio=True).order_by('abr').desc().first()
     
@@ -39,6 +40,7 @@ def download_non_progressive(chosen_stream,video,waitlist_id=0):
     return all_good
     
 def download_progressive(chosen_stream):
+    #Downloads progressive stream. Max res 720p. No convertion.
     vid_size = str(int((chosen_stream.filesize/1024/1024)))
     vid_name = chosen_stream.title
     try: 
@@ -46,11 +48,13 @@ def download_progressive(chosen_stream):
         print("Descargando video... " + vid_name)
         print("Tamaño: " + vid_size + " MB\n")
         chosen_stream.download(output_path="./downloads")
-        print("Video descargado exitosamente!")
+        print("Video descargado exitosamente!\n")
+        
     except:
         print("Ocurrió un error durante la descarga")
 
 def download_audio(chosen_stream):
+    #Downloads audio stream
     aud_size = str(int((chosen_stream.filesize/1024/1024)))
     aud_name = chosen_stream.title
     try: 
@@ -63,18 +67,18 @@ def download_audio(chosen_stream):
         print("Ocurrió un error durante la descarga")
 
 def get_info(link):
-    video = yt(link, on_progress_callback=on_progress)
-    return video
+    #Returns the vid as an object and adds a progress bar to it.
+    try:
+        video = yt(link, on_progress_callback=on_progress)
+        return video
+    except Exception as e:
+        print("No sé pudo obtener información del link")
+        return False
 
-def decide_res(video, qualities, itags):
+def decide_res(video, downloadable_streams):
+    #Asks the user for resolution to download.
     os.system("clear")
-    downloadable_streams = []
     
-    for quality in qualities:
-        tag = itags[quality]
-        stream = video.streams.get_by_itag(tag)
-        downloadable_streams.append(stream)
-        
     def print_res(downloadable_streams):
         i = 1
         for stream in downloadable_streams:
@@ -102,22 +106,15 @@ def decide_res(video, qualities, itags):
     chosen_stream = downloadable_streams[choice]
     return chosen_stream
 
-def get_highest_res(video, qualities, itags):
-    os.system("clear")
-    downloadable_streams = []
-    for quality in qualities:
-        tag = itags[quality]
-        stream = video.streams.get_by_itag(tag)
-        downloadable_streams.append(stream)
-    chosen_stream = downloadable_streams[0]
-    return chosen_stream
-
 def filter_res(video):
-    video_streams_av01 = video.streams.filter(adaptive=True, file_extension="mp4").order_by("resolution").desc()
+    #Gets the video resolution and chooses the best quality (codecs) for each resolution, returns no duplicates.
+    video_streams_adaptive = video.streams.filter(adaptive=True, file_extension="mp4").order_by("resolution").desc()
+    video_streams_progressive = video.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc()
     qualities = []
     itags = {}
     exists = False
-    for stream in video_streams_av01:
+    
+    for stream in video_streams_adaptive: #Returns the best adative stream for each quality and its itag.
         resolution = stream.resolution.replace("p","")
         resolution = int(resolution)
         if resolution >= 1080:
@@ -129,43 +126,50 @@ def filter_res(video):
                 qualities.append(stream.resolution)
             else:
                 exists = False
-    video_streams_progressive = video.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc()
-    for stream in video_streams_progressive:
+
+    for stream in video_streams_progressive: #As there are only two progressive streams (720p and 360p) or less, there are no duplicates.
         resolution = stream.resolution.replace("p","")
         resolution = int(resolution)
         itags[stream.resolution] = stream.itag
         qualities.append(stream.resolution)
-    audio_stream = video.streams.filter(adaptive=True, only_audio=True).order_by('abr').desc().first()
+    audio_stream = video.streams.filter(adaptive=True, file_extension="mp4", only_audio=True).order_by('abr').desc().first()
     itags["Audio"] = audio_stream.itag
     qualities.append("Audio")
-    
-    return qualities, itags
+
+    #Selects streams and appends them to list
+    downloadable_streams = []
+    for quality in qualities:
+        stream = video.streams.get_by_itag(itags[quality])
+        downloadable_streams.append(stream)
+    return downloadable_streams
             
 def combine(video,audio,output_name):
+    #Merges audio and video. Deletes working directory when finished.
     os.system("clear")
-    print("Espera un momento mientras convertimos tu video a la mejor calidad :)\n")
     video_clip = VideoFileClip(video)
     audio_clip = AudioFileClip(audio)
     new_audio_clip = CompositeAudioClip([audio_clip])
     video_clip.audio = new_audio_clip
     try:
+        print("Convirtiendo audio y video... en progreso...\n")
         video_clip.write_videofile(output_name, codec="libx264")
+        os.system("clear")
         print("Video descargado y convertido exitosamente!")
     except:
         print("Hubo un error durante la conversión")
-    #Esta parte remueve el directorio de trabajo, lo cual no afecta su funcionamiento ahora, pero lo hará cuando agrege la función de descargar varios videos en una ejecución
-    shutil.rmtree("./media/", ignore_errors=False, onerror=None)
 
 def normalize(title):
+    #Gets rid of the slash (/) signs that might cause errors in the program.
     new_title = ""
     for letter in title:
-        if letter != "/":
-            new_title = new_title + letter
-        else:
+        if letter == "/":
             new_title = new_title + "-"
+        else:
+            new_title = new_title + letter
     return new_title
 
 def get_urls_from_file(filename="links.txt"):
+    #Gets each line as a link.
     try:
         links = []
         with open(filename) as file:
@@ -176,44 +180,23 @@ def get_urls_from_file(filename="links.txt"):
         print(ex)
 
 def decide_mode():
+    #Decides which mode the program should work on. Can add as many modes as needed.
     mode = 0
     while mode < 1 or mode > 3:
         try:
             os.system("clear")
             mode = int(input("¿Qué modo de descarga?\n\n#1: Normal (Pegas el enlace al video y seleccionas la calidad)\n#2: Links (Toma los enlaces del archivo <links.txt>)\n#3: Links audio (Toma los enlaces del archivo <links.txt>) \n\n Respuesta: "))
         except:
-            print("Reintento")
+            print("Retrying")
     return mode
 
 def run_one_link():
     os.system("clear")
     url = input("Pega el enlace al video: ")
     video = get_info(url)
-    qualities, itags = filter_res(video)
-    chosen_stream = decide_res(video, qualities, itags)
-    all_good = False
-    if chosen_stream.is_progressive:
-        download_progressive(chosen_stream)
-    elif chosen_stream.type == "audio":    
-        download_audio(chosen_stream)
-    else:
-        all_good = download_non_progressive(chosen_stream, video)
-        title = normalize(video.title)
-        title = "./downloads/" + title + ".mp4"
-        if all_good:
-            combine("./media/videos/0.mp4", "./media/audios/0.mp4", title)
-        else:
-            "\nIntenta de nuevo"
-
-def run_on_links():
-    links = get_urls_from_file()
-    for link in links:
-        print("Se descargarán los videos en la mejor calidad disponible")
-        os.system("clear")
-        url = link
-        video = get_info(url)
-        qualities, itags = filter_res(video)
-        chosen_stream = get_highest_res(video, qualities, itags)
+    if video != False:
+        streams = filter_res(video)
+        chosen_stream = decide_res(video, streams)
         all_good = False
         if chosen_stream.is_progressive:
             download_progressive(chosen_stream)
@@ -226,28 +209,54 @@ def run_on_links():
             if all_good:
                 combine("./media/videos/0.mp4", "./media/audios/0.mp4", title)
             else:
-                "\nIntenta de nuevo"
+                print("\nImposible convertir. No se descargó el audio o el video correctamente")
 
-def run_on_links_audio():
+def run_on_links():
+    #Gets the links from the links file. Downloads each in the best quality available. If res > 720p, conversion is needed to merge audio and video.
     links = get_urls_from_file()
     for link in links:
         os.system("clear")
-        url = link
-        video = get_info(url)
-        chosen_stream = video.streams.filter(adaptive=True, file_extension="mp4", only_audio=True).order_by('abr').desc().first()
-        download_audio(chosen_stream)
+        video = get_info(link)
+        if video != False:
+            streams = filter_res(video)
+            chosen_stream = streams[0] #Gets the first stream, which has the largest res and highest quality.
+            all_good = False
+            if chosen_stream.is_progressive: #Max 720p res video. No conversion needed.
+                download_progressive(chosen_stream)
+            else: #Downloads audio and video and merges them.
+                all_good = download_non_progressive(chosen_stream, video)
+                title = normalize(video.title) #Replaces / for -, so next steps run properly.
+                title = "./downloads/" + title + ".mp4"
+                if all_good:
+                    combine("./media/videos/0.mp4", "./media/audios/0.mp4", title)
+                else:
+                    print("\nError al descargar audio o video")
+        else:
+            print("No se pudo obtener información del link proporcionado")
+
+def run_on_links_audio():
+    #Gets the links from the links file. Downloads each as an audio in the best quality available.
+    links = get_urls_from_file()
+    for link in links:
+        os.system("clear")
+        video = get_info(link)
+        if video != False:
+            chosen_stream = video.streams.filter(adaptive=True, file_extension="mp4", only_audio=True).order_by('abr').desc().first()
+            download_audio(chosen_stream)
+        else:
+            print("No se pudo obtener información del link proporcionado")
+    os.system("clear")
+    print("Proceso finalizado!")
 
 def run():
     mode = decide_mode()
-    
     if mode == 1:
         run_one_link()
     elif mode == 2:
         run_on_links()
     elif mode == 3:
         run_on_links_audio()
-    
-    
+    shutil.rmtree("./media/", ignore_errors=False, onerror=None)
 
 if __name__ == "__main__":
     run()
